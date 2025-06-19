@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>今日訂單列表</title>
+    <style>
+      table,
+      th,
+      td {
+        border: 1px solid #ccc;
+        border-collapse: collapse;
+        padding: 5px;
+      }
+      th {
+        background-color: #f2f2f2;
+      }
+      button {
+        margin: 10px;
+        padding: 8px 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>今日訂單列表</h2>
+    <button onclick="exportToExcel()">匯出為 Excel</button>
+    <button onclick="clearOrders()">清空所有訂單</button>
+    <div id="orders-container"></div>
+
+    <!-- 匯出 Excel 需要用到的函式庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <script>
+      const orders = JSON.parse(localStorage.getItem("orders") || "[]");
+      const container = document.getElementById("orders-container");
+
+      if (orders.length === 0) {
+        container.innerHTML = "<p>目前無訂單資料。</p>";
+      } else {
+        orders.forEach((order, index) => {
+          const div = document.createElement("div");
+          div.innerHTML = `
+          <h3>訂單 #${index + 1}</h3>
+          <p><strong>時間：</strong>${order.timestamp}</p>
+          <p><strong>會員電話：</strong>${order.memberPhone || "無"}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>條碼圖</th>
+                <th>條碼</th>
+                <th>品名</th>
+                <th>稅別</th>
+                <th>定價</th>
+                <th>折扣</th>
+                <th>銷售金額</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${order.items
+                .map(
+                  (item) => `
+                <tr>
+                  <td><img src="${item.barcodeImg}" width="100" /></td>
+                  <td>${item.barcode}</td>
+                  <td>${item.name}</td>
+                  <td>${item.taxType}</td>
+                  <td>${item.price}</td>
+                  <td>${item.discount}</td>
+                  <td>${item.finalPrice}</td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+          <p>免稅小計：${order.taxFree}</p>
+          <p>應稅小計：${order.taxable}</p>
+          <p><strong>合計總額：</strong>${order.grandTotal}</p>
+          <hr />
+        `;
+          container.appendChild(div);
+        });
+      }
+
+      function exportToExcel() {
+        if (orders.length === 0) {
+          alert("沒有可匯出的訂單！");
+          return;
+        }
+
+        const data = [["今日訂單報表"]];
+        data.push([]);
+
+        orders.forEach((order, index) => {
+          data.push([
+            `訂單編號：${index + 1}`,
+            `時間：${order.timestamp}`,
+            `會員電話：${order.memberPhone || "無"}`,
+          ]);
+          data.push([
+            "條碼圖網址",
+            "條碼",
+            "品名",
+            "稅別",
+            "定價",
+            "折扣",
+            "銷售金額",
+          ]);
+
+          order.items.forEach((item) => {
+            data.push([
+              item.barcodeImg,
+              item.barcode,
+              item.name,
+              item.taxType,
+              item.price,
+              item.discount,
+              item.finalPrice,
+            ]);
+          });
+
+          data.push([]);
+          data.push(["免稅小計", order.taxFree]);
+          data.push(["應稅小計", order.taxable]);
+          data.push(["合計總額", order.grandTotal]);
+          data.push([]);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "今日訂單");
+
+        const today = new Date().toISOString().split("T")[0];
+        XLSX.writeFile(wb, `今日訂單報表_${today}.xlsx`);
+      }
+
+      function clearOrders() {
+        if (confirm("確定要清除所有訂單？這個動作無法復原。")) {
+          localStorage.removeItem("orders");
+          location.reload();
+        }
+      }
+    </script>
+  </body>
+</html>

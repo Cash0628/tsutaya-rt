@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <title>市集簡易結帳系統</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+      }
+
+      table,
+      th,
+      td {
+        border: 1px solid #ccc;
+        border-collapse: collapse;
+        padding: 5px;
+      }
+
+      th {
+        background-color: #f2f2f2;
+      }
+
+      .top-right-clear {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+      }
+
+      /* 登入畫面樣式 */
+      #login-screen {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+
+      #protected-content {
+        display: none;
+      }
+
+      input[type="password"] {
+        padding: 8px;
+        margin-top: 10px;
+      }
+
+      button {
+        margin-top: 10px;
+        padding: 8px 16px;
+      }
+
+      .error {
+        color: red;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- 登入畫面 -->
+    <div id="login-screen">
+      <h2>請輸入密碼以進入系統</h2>
+      <input type="password" id="password-input" placeholder="輸入密碼" />
+      <button onclick="checkPassword()">登入</button>
+      <p id="error-msg" class="error"></p>
+    </div>
+
+    <!-- 結帳系統內容（登入後才顯示） -->
+    <div id="protected-content">
+      <div class="top-right-clear">
+        <button id="home-btn">回首頁</button>
+        <button id="clear-btn">清除目前畫面</button>
+      </div>
+
+      <div class="container">
+        <h2>市集簡易結帳系統</h2>
+
+        <label>
+          會員電話：
+          <input type="text" id="member-phone" />
+        </label>
+
+        <label>
+          商品條碼：
+          <input
+            type="text"
+            id="barcode-input"
+            placeholder="輸入商品條碼後按 Enter"
+          />
+        </label>
+
+        <table id="items-table">
+          <thead>
+            <tr>
+              <th>Barcode</th>
+              <th>條碼</th>
+              <th>品名</th>
+              <th>稅別</th>
+              <th>定價</th>
+              <th>折扣</th>
+              <th>銷售金額</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <div class="totals">
+          <p>免稅小計：<span id="tax-free-total">0</span></p>
+          <p>應稅小計：<span id="taxable-total">0</span></p>
+          <p><strong>合計總額：</strong><span id="grand-total">0</span></p>
+        </div>
+
+        <button id="checkout-btn">結帳 / 儲存訂單</button>
+        <a href="today.html" target="_blank">查看今日訂單</a>
+      </div>
+    </div>
+
+    <script>
+      // ===== 密碼驗證邏輯 =====
+      const correctPassword = "80290038"; // ← 這裡可以自行修改密碼
+
+      document
+        .getElementById("password-input")
+        .addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            checkPassword();
+          }
+        });
+      function checkPassword() {
+        const input = document.getElementById("password-input").value;
+        const errorMsg = document.getElementById("error-msg");
+
+        if (input === correctPassword) {
+          document.getElementById("login-screen").style.display = "none";
+          document.getElementById("protected-content").style.display = "block";
+          document.getElementById("barcode-input").focus();
+        } else {
+          errorMsg.textContent = "密碼錯誤，請再試一次。";
+        }
+      }
+
+      // ===== 原本結帳功能 =====
+      let productDB = {};
+
+      fetch("products.json")
+        .then((response) => response.json())
+        .then((data) => {
+          productDB = data;
+        })
+        .catch((err) => {
+          console.error("載入商品資料錯誤:", err);
+        });
+
+      const barcodeInput = document.getElementById("barcode-input");
+      const tableBody = document.querySelector("#items-table tbody");
+      const taxFreeTotal = document.getElementById("tax-free-total");
+      const taxableTotal = document.getElementById("taxable-total");
+      const grandTotal = document.getElementById("grand-total");
+
+      if (barcodeInput) {
+        barcodeInput.addEventListener("keypress", function (e) {
+          if (e.key === "Enter") {
+            const code = barcodeInput.value.trim();
+            barcodeInput.value = "";
+            addItem(code);
+          }
+        });
+      }
+
+      function addItem(code) {
+        const product = productDB[code];
+        if (!product) {
+          alert("找不到此商品！");
+          return;
+        }
+
+        const row = document.createElement("tr");
+
+        row.innerHTML = `
+          <td><img src="https://barcode.tec-it.com/barcode.ashx?data=${code}&code=Code128" alt="Barcode" width="100" /></td>
+          <td>${code}</td>
+          <td>${product.name}</td>
+          <td>${product.taxType}</td>
+          <td>${product.price}</td>
+          <td>
+            <select class="discount">
+              <option value="1">100%</option>
+              <option value="0.5">50%</option>
+              <option value="0.3">30%</option>
+            </select>
+          </td>
+          <td class="final-price">${product.price}</td>
+        `;
+
+        tableBody.appendChild(row);
+
+        row.querySelector(".discount").addEventListener("change", () => {
+          updateFinalPrice(row, product.price);
+          updateTotals();
+        });
+
+        updateTotals();
+      }
+
+      function updateFinalPrice(row, price) {
+        const discount = parseFloat(row.querySelector(".discount").value);
+        const finalPrice = Math.round(price * discount);
+        row.querySelector(".final-price").textContent = finalPrice;
+      }
+
+      function updateTotals() {
+        let taxFree = 0;
+        let taxable = 0;
+
+        Array.from(tableBody.rows).forEach((row) => {
+          const tax = parseInt(row.cells[3].textContent);
+          const finalPrice = parseInt(row.cells[6].textContent);
+          if (tax === 3) taxFree += finalPrice;
+          else if (tax === 1) taxable += finalPrice;
+        });
+
+        taxFreeTotal.textContent = taxFree;
+        taxableTotal.textContent = taxable;
+        grandTotal.textContent = taxFree + taxable;
+      }
+
+      function clearScreen() {
+        tableBody.innerHTML = "";
+        taxFreeTotal.textContent = "0";
+        taxableTotal.textContent = "0";
+        grandTotal.textContent = "0";
+        barcodeInput.value = "";
+        document.getElementById("member-phone").value = "";
+        barcodeInput.focus();
+      }
+
+      document
+        .getElementById("clear-btn")
+        .addEventListener("click", clearScreen);
+
+      document.getElementById("checkout-btn").addEventListener("click", () => {
+        if (tableBody.rows.length === 0) {
+          alert("沒有商品可儲存！");
+          return;
+        }
+
+        const orderItems = [];
+        let taxFree = 0;
+        let taxable = 0;
+
+        Array.from(tableBody.rows).forEach((row) => {
+          const item = {
+            barcodeImg: row.cells[0].querySelector("img").src,
+            barcode: row.cells[1].textContent,
+            name: row.cells[2].textContent,
+            taxType: row.cells[3].textContent,
+            price: row.cells[4].textContent,
+            discount:
+              row.querySelector(".discount").selectedOptions[0].textContent,
+            finalPrice: row.cells[6].textContent,
+          };
+
+          const tax = parseInt(item.taxType);
+          const finalPrice = parseInt(item.finalPrice);
+
+          if (tax === 3) taxFree += finalPrice;
+          else if (tax === 1) taxable += finalPrice;
+
+          orderItems.push(item);
+        });
+
+        const grandTotalVal = taxFree + taxable;
+
+        const newOrder = {
+          timestamp: new Date().toLocaleString(),
+          memberPhone: document.getElementById("member-phone").value,
+          items: orderItems,
+          taxFree,
+          taxable,
+          grandTotal: grandTotalVal,
+        };
+
+        const existingOrders = JSON.parse(
+          localStorage.getItem("orders") || "[]"
+        );
+        existingOrders.push(newOrder);
+        localStorage.setItem("orders", JSON.stringify(existingOrders));
+
+        alert("訂單已儲存！");
+        clearScreen();
+      });
+      document.getElementById("home-btn").addEventListener("click", () => {
+        document.getElementById("protected-content").style.display = "none";
+        document.getElementById("login-screen").style.display = "flex";
+        document.getElementById("password-input").value = "";
+        document.getElementById("error-msg").textContent = "";
+        clearScreen(); // 順便清空畫面資料
+      });
+    </script>
+  </body>
+</html>
